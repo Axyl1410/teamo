@@ -1,24 +1,27 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
 class HomeView extends StatelessWidget {
-  const HomeView({super.key, required this.navigationShell});
+  const HomeView({
+    super.key,
+    required this.child,
+    required this.currentIndex,
+    required this.onTabSelected,
+  });
 
-  final StatefulNavigationShell navigationShell;
+  final Widget child;
+  final int currentIndex;
+  final ValueChanged<int> onTabSelected;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: navigationShell,
+      body: child,
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.shifting,
         selectedItemColor: Colors.lightBlue,
         unselectedItemColor: Colors.grey,
-        currentIndex: navigationShell.currentIndex,
-        onTap: (index) => navigationShell.goBranch(
-          index,
-          initialLocation: index == navigationShell.currentIndex,
-        ),
+        currentIndex: currentIndex,
+        onTap: onTabSelected,
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(
             backgroundColor: Colors.white,

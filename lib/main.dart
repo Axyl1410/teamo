@@ -20,6 +20,7 @@ class App extends ConsumerStatefulWidget {
 class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   static const bool _useMaterial3 = true;
   static const ThemeMode _themeMode = ThemeMode.system;
+  late final router = ref.read(appRouterProvider);
 
   @override
   void initState() {
@@ -48,7 +49,6 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final router = ref.watch(appRouterProvider);
     return MaterialApp.router(
       debugShowCheckedModeBanner: false,
       title: 'Zola',

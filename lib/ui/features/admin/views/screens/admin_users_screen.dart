@@ -50,9 +50,14 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
         }
         break;
       case SessionValidationOutcome.banned:
+        setState(() {
+          _isCheckingSession = false;
+        });
         return;
       case SessionValidationOutcome.unauthenticated:
-        await authNotifier.logout();
+        setState(() {
+          _isCheckingSession = false;
+        });
         return;
       case SessionValidationOutcome.transientFailure:
         ScaffoldMessenger.of(context).showSnackBar(
@@ -62,7 +67,9 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
             ),
           ),
         );
-        context.go(AppRoute.homePersonal);
+        setState(() {
+          _isCheckingSession = false;
+        });
         return;
     }
     setState(() {

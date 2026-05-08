@@ -15,13 +15,21 @@ enum AuthStatus {
   banned,
   unauthenticated,
 }
-enum SessionValidationOutcome { active, banned, unauthenticated, transientFailure }
+
+enum SessionValidationOutcome {
+  active,
+  banned,
+  unauthenticated,
+  transientFailure,
+}
 
 class AuthStatusNotifier extends Notifier<AuthStatus> {
   Timer? _tokenExpiryTimer;
+  Future<SessionValidationOutcome>? _validationInFlight;
   DateTime? _lastCriticalValidationAt;
   SessionValidationOutcome? _lastCriticalValidationOutcome;
   static const Duration _criticalValidationCooldown = Duration(seconds: 5);
+  static const Duration _sessionRequestTimeout = Duration(seconds: 10);
 
   void _invalidateCurrentUserIfMounted() {
     if (ref.mounted) {
@@ -76,7 +84,7 @@ class AuthStatusNotifier extends Notifier<AuthStatus> {
   }
 
   Future<SessionValidationOutcome> validateSessionForLifecycle() async {
-    return _validateSession(requireOnlineValidation: false);
+    return _validateSessionSingleFlight(requireOnlineValidation: false);
   }
 
   Future<SessionValidationOutcome> validateSessionForCriticalAction() async {
@@ -89,7 +97,9 @@ class AuthStatusNotifier extends Notifier<AuthStatus> {
       return lastResult;
     }
 
-    final result = await _validateSession(requireOnlineValidation: true);
+    final result = await _validateSessionSingleFlight(
+      requireOnlineValidation: true,
+    );
     _lastCriticalValidationAt = now;
     _lastCriticalValidationOutcome = result;
     return result;
@@ -116,10 +126,29 @@ class AuthStatusNotifier extends Notifier<AuthStatus> {
   Future<bool> ensureSessionActive({
     bool requireOnlineValidation = true,
   }) async {
-    final outcome = await _validateSession(
+    final outcome = await _validateSessionSingleFlight(
       requireOnlineValidation: requireOnlineValidation,
     );
     return outcome == SessionValidationOutcome.active;
+  }
+
+  Future<SessionValidationOutcome> _validateSessionSingleFlight({
+    required bool requireOnlineValidation,
+  }) {
+    final inFlight = _validationInFlight;
+    if (inFlight != null) {
+      return inFlight;
+    }
+    final future = _validateSession(
+      requireOnlineValidation: requireOnlineValidation,
+    );
+    _validationInFlight = future;
+    future.whenComplete(() {
+      if (identical(_validationInFlight, future)) {
+        _validationInFlight = null;
+      }
+    });
+    return future;
   }
 
   Future<SessionValidationOutcome> _validateSession({
@@ -143,7 +172,8 @@ class AuthStatusNotifier extends Notifier<AuthStatus> {
     try {
       final sessionResult = await ref
           .read(authBackendRepositoryProvider)
-          .getSession(bearerToken: token);
+          .getSession(bearerToken: token)
+          .timeout(_sessionRequestTimeout);
       if (!ref.mounted) {
         return SessionValidationOutcome.unauthenticated;
       }
@@ -184,7 +214,7 @@ class AuthStatusNotifier extends Notifier<AuthStatus> {
         return SessionValidationOutcome.unauthenticated;
       }
       if (error.statusCode == 401) {
-        await logout(notifyBackend: false);
+        await _clearLocalSessionAndSetUnauthenticated();
         return SessionValidationOutcome.unauthenticated;
       }
       if (!requireOnlineValidation) {
@@ -203,6 +233,7 @@ class AuthStatusNotifier extends Notifier<AuthStatus> {
       debugPrint(
         'Critical session validation failed (${error.statusCode}): ${error.message}. Keep session, block critical action.',
       );
+      state = AuthStatus.sessionRecoveryRequired;
       return SessionValidationOutcome.transientFailure;
     } catch (error) {
       if (!ref.mounted) {
@@ -222,6 +253,7 @@ class AuthStatusNotifier extends Notifier<AuthStatus> {
       debugPrint(
         'Critical session validation failed: $error. Keep session, block critical action.',
       );
+      state = AuthStatus.sessionRecoveryRequired;
       return SessionValidationOutcome.transientFailure;
     }
   }
@@ -258,7 +290,9 @@ class AuthStatusNotifier extends Notifier<AuthStatus> {
               .signOut(bearerToken: token);
         } catch (error) {
           // Always clear local session even if backend logout fails.
-          debugPrint('Backend sign-out failed, fallback to local clear: $error');
+          debugPrint(
+            'Backend sign-out failed, fallback to local clear: $error',
+          );
         }
       }
       await _clearLocalSessionAndSetUnauthenticated();

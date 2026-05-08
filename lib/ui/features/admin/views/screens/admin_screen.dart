@@ -48,7 +48,6 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
       case SessionValidationOutcome.banned:
         return false;
       case SessionValidationOutcome.unauthenticated:
-        await authNotifier.logout();
         return false;
       case SessionValidationOutcome.transientFailure:
         ScaffoldMessenger.of(context).showSnackBar(
@@ -58,7 +57,6 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
             ),
           ),
         );
-        context.go(AppRoute.homePersonal);
         return false;
     }
   }
@@ -73,7 +71,15 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
 
   Future<void> _guardSession() async {
     final allowed = await _ensureAdminAccess();
-    if (!mounted || !allowed) return;
+    if (!mounted) {
+      return;
+    }
+    if (!allowed) {
+      setState(() {
+        _isCheckingSession = false;
+      });
+      return;
+    }
     setState(() {
       _isCheckingSession = false;
     });
